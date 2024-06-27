@@ -65,6 +65,7 @@ This project provides a robust and efficient backend solution designed specifica
     ```
    
 3.  **Create postgres database, e.g. `mini_app_db`**.
+4.  `alembic upgrade head` to apply migrations.
 
 **Integrate with your Telegram Mini-App**: 
 
