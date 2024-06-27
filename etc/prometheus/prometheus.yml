@@ -1,0 +1,26 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+
+rule_files:
+
+scrape_configs:
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["prometheus:9090"]
+
+  - job_name: "mini-app-api"
+    scrape_interval: 5s
+
+    static_configs:
+      - targets: ['mini-app-api:8000']
+
+  - job_name: "postgres-exporter"
+
+    static_configs:
+      - targets: [ "postgres-exporter:9187" ]

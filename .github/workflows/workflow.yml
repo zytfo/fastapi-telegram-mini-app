@@ -1,0 +1,26 @@
+name: Rebuild Docker Image and Deploy Backend
+on:
+  push:
+    branches:
+      - main
+jobs:
+  build-and-deploy-main:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+#      - name: Deploy
+#        uses: appleboy/ssh-action@master
+#        with:
+#          host: ${{ secrets.VPS_SSH_HOST }}
+#          username: ${{ secrets.VPS_SSH_USERNAME }}
+#          password: ${{ secrets.VPS_SSH_PASSWORD }}
+#          port: ${{ secrets.PORT }}
+#          script: |
+#            cd fastapi-mini-app/
+#            git reset --hard origin/main || true
+#            git pull origin main || true
+#            docker-compose -f ./docker-compose.yaml up -d --build || true
+#            docker system prune -a -f || true

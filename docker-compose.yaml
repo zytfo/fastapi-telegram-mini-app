@@ -1,0 +1,180 @@
+version: "3.8"
+
+x-logging: &default-logging
+  driver: loki
+  options:
+    loki-url: 'http://localhost:3100/api/prom/push'
+    loki-pipeline-stages: |
+      - multiline:
+          firstline: '^\d{4}-\d{2}-\d{2} \d{1,2}:\d{2}:\d{2}'
+          max_wait_time: 3s
+      - regex:
+          expression: '^(?P<time>\d{4}-\d{2}-\d{2} \d{1,2}:\d{2}:\d{2},d{3}) (?P<message>(?s:.*))$$'
+
+services:
+  loki:
+    image: grafana/loki:2.8.3
+    container_name: loki
+    command: -config.file=/etc/loki/local-config.yaml
+    ports:
+      - "3100:3100"
+    networks:
+      - mini_app_network
+
+
+  prometheus:
+    image: prom/prometheus
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./etc/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - --enable-feature=exemplar-storage
+    depends_on:
+      - loki
+    logging: *default-logging
+    networks:
+      - mini_app_network
+
+  tempo:
+    image: grafana/tempo:2.1.1
+    container_name: tempo
+    command: [ "--target=all", "--storage.trace.backend=local", "--storage.trace.local.path=/var/tempo", "--auth.enabled=false" ]
+    ports:
+      - "4317:4317"
+    depends_on:
+      - loki
+    logging: *default-logging
+    networks:
+      - mini_app_network
+
+  grafana:
+    image: grafana/grafana:10.0.2
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./etc/grafana/:/etc/grafana/provisioning/datasources
+      - ./etc/dashboards.yaml:/etc/grafana/provisioning/dashboards/dashboards.yaml
+      - ./etc/dashboards:/etc/grafana/dashboards
+    depends_on:
+      - loki
+      - prometheus
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+    logging: *default-logging
+    networks:
+      - mini_app_network
+
+  db:
+    image: postgres:13.2-alpine
+    container_name: pgdb
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=password
+    ports:
+      - "5432:5432"
+    expose:
+      - 5432
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - mini_app_network
+
+  redis_server:
+    image: "redis:alpine"
+    container_name: redis
+    command: redis-server --appendonly yes --replica-read-only no
+    restart: on-failure
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - mini_app_network
+
+  rabbitmq:
+    image: rabbitmq:3.10-management-alpine
+    container_name: rabbitmq
+    restart: on-failure
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    networks:
+      - mini_app_network
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq/
+      - rabbitmq_log:/var/log/rabbitmq/
+      - ./rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf
+
+  mini_app_api:
+    container_name: mini-app-api
+    build: .
+    command: bash -c "alembic upgrade head && python main.py"
+    ports:
+      - "8000:8000"
+    restart: always
+    networks:
+      - mini_app_network
+    depends_on:
+      - loki
+    environment:
+      APP_NAME: "mini-app-api"
+    logging: *default-logging
+
+  postgres_exporter:
+    image: prometheuscommunity/postgres-exporter
+    ports:
+      - "9187:9187"
+    environment:
+      DATA_SOURCE_NAME: "postgresql://postgres:password@db:5432/mini_app_db?sslmode=disable"
+    links:
+      - db
+      - prometheus
+    networks:
+      - mini_app_network
+
+volumes:
+  redis_data:
+    driver: local
+    driver_opts:
+      o: bind
+      type: none
+      device: ../mini-app-data/redis-data
+  rabbitmq_data:
+      driver: local
+      driver_opts:
+        type: none
+        o: bind
+        device: ../mini-app-data/rabbitmq-data
+  rabbitmq_log:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ../mini-app-data/rabbitmq-logs
+  prometheus_data:
+    driver: local
+    driver_opts:
+      o: bind
+      type: none
+      device: ../mini-app-data/prometheus-data
+  grafana_data:
+    driver: local
+    driver_opts:
+      o: bind
+      type: none
+      device: ../mini-app-data/grafana-data
+  pgdata:
+    driver: local
+    driver_opts:
+      o: bind
+      type: none
+      device: ../mini-app-data/pgdata
+
+networks:
+  mini_app_network:
+    name: mini_app_network
+    driver: bridge
